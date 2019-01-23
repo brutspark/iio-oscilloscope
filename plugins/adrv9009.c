@@ -114,7 +114,7 @@ static bool can_update_widgets;
 static const gdouble mhz_scale = 1000000.0;
 static const gdouble inv_scale = -1.0;
 
-//static char last_profile[PATH_MAX];
+static char last_profile[PATH_MAX];
 
 static struct iio_context *ctx;
 static struct iio_device *dds, *cap, *cap_obs;
@@ -228,14 +228,26 @@ static const char *adrv9009_sr_attribs[] = {
 
 static void profile_update(void);
 
-/* Find all devices of type 'struct iio_device*' that are of type 'adrv9009-phy'.
+/* Returns a newly allocated array of 'struct iio_device*' elements,
+ * which correspond to all 'adrv9009-phy-x' devices.
  */
-// static GArray* get_phy_adrv9009_devices(void)
-// {
-// 	// TO DO: implement this
+static GArray* get_phy_adrv9009_devices(void)
+{
+	GArray* array = g_array_new(FALSE, FALSE, sizeof(struct iio_device *));
+	ssize_t i = 0;
 
-// 	return g_array_new(FALSE, FALSE, sizeof(struct iio_device*));
-// }
+	for (; i < iio_context_get_devices_count(ctx); i++)
+	{
+		struct iio_device *dev = iio_context_get_device(ctx, i);
+		const char *dev_name = iio_device_get_name(dev);
+
+		if (dev_name && !strncmp(dev_name, PHY_DEVICE, strlen(PHY_DEVICE))) {
+			g_array_append_val(array, dev);
+		}
+	}
+
+	return array;
+}
 
 static void update_label_from(GtkWidget *label, struct iio_device *dev, const char *channel,
                               const char *attribute, bool output, const char *unit, int scale)
@@ -282,7 +294,6 @@ static void trigger_advanced_plugin_reload(void)
 }
 
 int load_tal_profile(const char *file_name,
-                     struct iio_device *dev1, struct iio_device *dev2,
                      GtkWidget *panel, GtkFileChooser *chooser,
                      char *last_profile)
 {
@@ -320,12 +331,9 @@ int load_tal_profile(const char *file_name,
 
 		iio_context_set_timeout(ctx, 30000);
 
-		ret = iio_device_attr_write_raw(dev1,
-										"profile_config", buf, len);
-
-		if (dev2) {
-			ret2 = iio_device_attr_write_raw(dev2,
-											 "profile_config", buf, len);
+		guint i = 0;
+		for (; i < phy_devs_count; i++) {
+			ret2 = iio_device_attr_write_raw(subcomponents[i].iio_dev, "profile_config", buf, len);
 			ret = (ret > ret2) ? ret2 : ret;
 		}
 
@@ -341,10 +349,10 @@ int load_tal_profile(const char *file_name,
 			toplevel = NULL;
 
 		GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(toplevel),
-												   GTK_DIALOG_MODAL,
-												   GTK_MESSAGE_ERROR,
-												   GTK_BUTTONS_CLOSE,
-												   "\nFailed to load profile using the selected file.");
+							GTK_DIALOG_MODAL,
+							GTK_MESSAGE_ERROR,
+							GTK_BUTTONS_CLOSE,
+							"\nFailed to load profile using the selected file.");
 		gtk_window_set_title(GTK_WINDOW(dialog), "Profile Configuration Failed");
 
 		if (gtk_dialog_run(GTK_DIALOG(dialog)))
@@ -445,35 +453,39 @@ static void glb_settings_update_labels(void)
 
 static void rx_freq_info_update(void)
 {
-	// double lo_freq;
+	double lo_freq;
 
-	// if (cap) {
-	// 	rx_update_device_sampling_freq(CAP_DEVICE,
-	// 								   USE_INTERN_SAMPLING_FREQ);
-	// 	lo_freq = mhz_scale * gtk_spin_button_get_value(
-	// 							  GTK_SPIN_BUTTON(glb_widgets[trx_lo].widget));
+	if (cap) {
+		rx_update_device_sampling_freq(CAP_DEVICE,
+			USE_INTERN_SAMPLING_FREQ);
+		lo_freq = mhz_scale * gtk_spin_button_get_value(
+				GTK_SPIN_BUTTON(subcomponents[0].glb_widgets[subcomponents[0].trx_lo].widget));
 
-	// 	rx_update_channel_lo_freq(CAP_DEVICE, "all", lo_freq);
-	// }
+		rx_update_channel_lo_freq(CAP_DEVICE, "all", lo_freq);
+	}
 
-	// if (cap_obs) {
-	// 	const char *source;
+	if (cap_obs) {
+		const char *source;
 
-	// 	rx_update_device_sampling_freq(CAP_DEVICE_2,
-	// 								   USE_INTERN_SAMPLING_FREQ);
+		rx_update_device_sampling_freq(CAP_DEVICE_2,
+					USE_INTERN_SAMPLING_FREQ);
 
-	// 	source = gtk_combo_box_get_active_text(GTK_COMBO_BOX(obs_port_select));
+		guint i = 0;
+		for (; i < phy_devs_count; i++) {
+			source = gtk_combo_box_get_active_text(GTK_COMBO_BOX(subcomponents[i].obs_port_select));
 
-	// 	if (source && strstr(source, "TX")) {
-	// 		lo_freq = mhz_scale * gtk_spin_button_get_value(
-	// 								  GTK_SPIN_BUTTON(glb_widgets[trx_lo].widget));
-	// 	} else {
-	// 		lo_freq = mhz_scale * gtk_spin_button_get_value(
-	// 								  GTK_SPIN_BUTTON(obsrx_widgets[aux_lo].widget));
-	// 	}
+			if (source && strstr(source, "TX")) {
+				lo_freq = mhz_scale * gtk_spin_button_get_value(
+					GTK_SPIN_BUTTON(subcomponents[i].glb_widgets[subcomponents[i].trx_lo].widget));
+			} else {
+				lo_freq = mhz_scale * gtk_spin_button_get_value(
+					GTK_SPIN_BUTTON(subcomponents[i].obsrx_widgets[subcomponents[i].aux_lo].widget));
+			}
+		}
 
-	// 	rx_update_channel_lo_freq(CAP_DEVICE_2, "all", lo_freq);
-	// }
+		// TO DO: figure out what to do here. Do we set each group of channels with corresponding LO frequency?
+		rx_update_channel_lo_freq(CAP_DEVICE_2, "all", lo_freq);
+	}
 }
 
 static void sample_frequency_changed_cb(void *data)
@@ -482,120 +494,127 @@ static void sample_frequency_changed_cb(void *data)
 	rx_freq_info_update();
 }
 
-static void rssi_update_label(GtkWidget *label, const char *chn, bool is_tx)
+static void rssi_update_label(GtkWidget *label, struct iio_channel *ch)
 {
-	// char buf[1024];
-	// int ret;
-	// struct iio_channel *ch;
+	char buf[1024];
+	int ret;
 
-	// /* don't update if it is hidden (to quiet down SPI) */
-	// if (!gtk_widget_is_drawable(GTK_WIDGET(label)))
-	// 	return;
+	/* don't update if it is hidden (to quiet down SPI) */
+	if (!gtk_widget_is_drawable(GTK_WIDGET(label)))
+		return;
 
-	// ch = iio_device_find_channel(dev, chn, is_tx);
-	// if (ch) {
-	// 	ret = iio_channel_attr_read(ch, "rssi", buf, sizeof(buf));
-	// } else {
-	// 	ret = -1;
-	// }
-
-	// if (ret > 0)
-	// 	gtk_label_set_text(GTK_LABEL(label), buf);
-	// else
-	// 	gtk_label_set_text(GTK_LABEL(label), "<error>");
+	ret = iio_channel_attr_read(ch, "rssi", buf, sizeof(buf));
+	if (ret > 0)
+		gtk_label_set_text(GTK_LABEL(label), buf);
+	else
+		gtk_label_set_text(GTK_LABEL(label), "<error>");
 }
 
 static void rssi_update_labels(void)
 {
 	guint i = 0;
 	for (; i < phy_devs_count; i++) {
-		rssi_update_label(subcomponents[i].rx1_rssi, "voltage0", false);
-		rssi_update_label(subcomponents[i].rx2_rssi, "voltage1", false);
-		/*rssi_update_label(subcomponents[i].obs_rssi, "voltage2", false);*/
+		rssi_update_label(subcomponents[i].rx1_rssi, subcomponents[i].ch0);
+		rssi_update_label(subcomponents[i].rx2_rssi, subcomponents[i].ch1);
+		/*rssi_update_label(subcomponents[i].obs_rssi, subcomponents[i].ch2);*/
 	}
 }
 
-// static gboolean update_display(gpointer foo)
-// {
-// 	if (this_page == gtk_notebook_get_current_page(nbook) || plugin_detached) {
-// 		const char *gain_mode;
+static gboolean update_display(gpointer foo)
+{
+	if (this_page == gtk_notebook_get_current_page(nbook) || plugin_detached) {
+		const char *gain_mode;
+		guint i = 0;
 
-// 		rssi_update_labels();
-// 		gain_mode = gtk_combo_box_get_active_text(GTK_COMBO_BOX(rx_gain_control_modes_rx1));
+		rssi_update_labels();
+		
+		for (; i < phy_devs_count; i++) {
+			gain_mode = gtk_combo_box_get_active_text(GTK_COMBO_BOX(subcomponents[i].rx_gain_control_modes_rx1));
 
-// 		if (gain_mode && strcmp(gain_mode, "manual")) {
-// 			iio_widget_update(&rx_widgets[rx1_gain]);
-// 			iio_widget_update(&rx_widgets[rx2_gain]);
-// 		}
+			if (gain_mode && strcmp(gain_mode, "manual")) {
+				iio_widget_update(&subcomponents[i].rx_widgets[subcomponents[i].rx1_gain]);
+				iio_widget_update(&subcomponents[i].rx_widgets[subcomponents[i].rx2_gain]);
+			}
+		}
+	}
 
-// 	}
-
-// 	return TRUE;
-// }
+	return TRUE;
+}
 
 static void rx_phase_rotation_update()
 {
-	// struct iio_channel *out[4];
-	// gdouble val[4];
-	// int i, d = 0;
+	gdouble val[4];
+	int iq_cnt = 2; /* two channel types: I, Q */
+	int cap_chn_count = 4; /* number of input channel for a single capture device */
+	guint i;
+	ssize_t n;
 
-	// if (!cap)
-	// 	return;
+	if (!cap)
+		return;
 
-	// out[0] = iio_device_find_channel(cap, "voltage0_i", false);
-	// out[1] = iio_device_find_channel(cap, "voltage0_q", false);
-	// out[2] = iio_device_find_channel(cap, "voltage1_i", false);
-	// out[3] = iio_device_find_channel(cap, "voltage1_q", false);
-	// d = 2;
+	// Get all I/Q channels
+	GArray *out = g_array_new(FALSE, FALSE, sizeof(struct iio_channel *));
+	for (n = 0; n < iio_device_get_channels_count(cap); i++) {
+		struct iio_channel *ch = iio_device_get_channel(cap, i);
 
-	// for (i = 0; i <= d; i += 2) {
-	// 	iio_channel_attr_read_double(out[i], "calibscale", &val[0]);
-	// 	iio_channel_attr_read_double(out[i], "calibphase", &val[1]);
-	// 	iio_channel_attr_read_double(out[i + 1], "calibscale", &val[2]);
-	// 	iio_channel_attr_read_double(out[i + 1], "calibphase", &val[3]);
+		if (!iio_channel_is_output(ch) && iio_channel_is_scan_element(ch))
+			g_array_append_val(out, ch);
+	}
 
-	// 	val[0] = acos(val[0]) * 360.0 / (2.0 * M_PI);
-	// 	val[1] = asin(-1.0 * val[1]) * 360.0 / (2.0 * M_PI);
-	// 	val[2] = acos(val[2]) * 360.0 / (2.0 * M_PI);
-	// 	val[3] = asin(val[3]) * 360.0 / (2.0 * M_PI);
+	for (i = 0; i <= out->len; i += iq_cnt) {
+		struct iio_channel *i_chn = g_array_index(out, struct iio_channel*, i);
+		struct iio_channel *q_chn = g_array_index(out, struct iio_channel*, i + 1);
 
-	// 	if (val[1] < 0.0)
-	// 		val[0] *= -1.0;
+		iio_channel_attr_read_double(i_chn, "calibscale", &val[0]);
+		iio_channel_attr_read_double(i_chn, "calibphase", &val[1]);
+		iio_channel_attr_read_double(q_chn, "calibscale", &val[2]);
+		iio_channel_attr_read_double(q_chn, "calibphase", &val[3]);
 
-	// 	if (val[3] < 0.0)
-	// 		val[2] *= -1.0;
+		val[0] = acos(val[0]) * 360.0 / (2.0 * M_PI);
+		val[1] = asin(-1.0 * val[1]) * 360.0 / (2.0 * M_PI);
+		val[2] = acos(val[2]) * 360.0 / (2.0 * M_PI);
+		val[3] = asin(val[3]) * 360.0 / (2.0 * M_PI);
 
-	// 	if (val[1] < -90.0)
-	// 		val[0] = (val[0] * -1.0) - 180.0;
+		if (val[1] < 0.0)
+			val[0] *= -1.0;
 
-	// 	if (val[3] < -90.0)
-	// 		val[0] = (val[0] * -1.0) - 180.0;
+		if (val[3] < 0.0)
+			val[2] *= -1.0;
 
-	// 	if (fabs(val[0]) > 90.0) {
-	// 		if (val[1] < 0.0)
-	// 			val[1] = (val[1] * -1.0) - 180.0;
-	// 		else
-	// 			val[1] = 180 - val[1];
-	// 	}
+		if (val[1] < -90.0)
+			val[0] = (val[0] * -1.0) - 180.0;
 
-	// 	if (fabs(val[2]) > 90.0) {
-	// 		if (val[3] < 0.0)
-	// 			val[3] = (val[3] * -1.0) - 180.0;
-	// 		else
-	// 			val[3] = 180 - val[3];
-	// 	}
+		if (val[3] < -90.0)
+			val[0] = (val[0] * -1.0) - 180.0;
 
-	// 	if (round(val[0]) != round(val[1]) &&
-	// 		round(val[0]) != round(val[2]) &&
-	// 		round(val[0]) != round(val[3])) {
-	// 		printf("error calculating phase rotations\n");
-	// 		val[0] = 0.0;
-	// 	}
-	// 	else
-	// 		val[0] = (val[0] + val[1] + val[2] + val[3]) / 4.0;
+		if (fabs(val[0]) > 90.0) {
+			if (val[1] < 0.0)
+				val[1] = (val[1] * -1.0) - 180.0;
+			else
+				val[1] = 180 - val[1];
+		}
 
-	// 	gtk_spin_button_set_value(GTK_SPIN_BUTTON(rx_phase_rotation[i / 2]), val[0]);
-	// }
+		if (fabs(val[2]) > 90.0) {
+			if (val[3] < 0.0)
+				val[3] = (val[3] * -1.0) - 180.0;
+			else
+				val[3] = 180 - val[3];
+		}
+
+		if (round(val[0]) != round(val[1]) &&
+			round(val[0]) != round(val[2]) &&
+			round(val[0]) != round(val[3])) {
+			printf("error calculating phase rotations for device %s\n",
+				iio_device_get_id(subcomponents[i / cap_chn_count].iio_dev));
+			val[0] = 0.0;
+		}
+		else
+			val[0] = (val[0] + val[1] + val[2] + val[3]) / 4.0;
+
+		gtk_spin_button_set_value(GTK_SPIN_BUTTON(subcomponents[i / cap_chn_count].rx_phase_rotation[i / iq_cnt]), val[0]);
+	}
+
+	g_array_free(out, FALSE);
 }
 
 static void update_widgets(void)
@@ -655,10 +674,9 @@ static void hide_section_cb(GtkToggleToolButton *btn, GtkWidget *section)
 
 static void profile_config_file_set_cb(GtkFileChooser *chooser, gpointer data)
 {
-	// char *file_name = gtk_file_chooser_get_filename(chooser);
+	char *file_name = gtk_file_chooser_get_filename(chooser);
 
-	// load_tal_profile(file_name, dev, NULL, adrv9009_panel, chooser,
-	// 				 last_profile);
+	load_tal_profile(file_name, adrv9009_panel, chooser, last_profile);
 }
 
 static int compare_gain(const char *a, const char *b) __attribute__((unused));
@@ -813,7 +831,7 @@ static int adrv9009_handle_driver(const char *attrib, const char *value)
 
 	// if (MATCH_ATTRIB("load_tal_profile_file")) {
 	// 	if (value[0]) {
-	// 		load_tal_profile(value, dev, NULL, adrv9009_panel,
+	// 		load_tal_profile(value, adrv9009_panel,
 	// 						 GTK_FILE_CHOOSER(profile_config),
 	// 						 last_profile);
 	// 	}
@@ -976,25 +994,25 @@ static GtkWidget *adrv9009_init(GtkWidget *notebook, const char *ini_fn)
 		return NULL;
 
 	/* Are there more adrv9009-phy devices? */
-	//GArray *phy_adrv9009_devs = get_phy_adrv9009_devices();
-	//phy_devs_count = phy_adrv9009_devs->len;
-	phy_devs_count = 3;
+	GArray *phy_adrv9009_devs = get_phy_adrv9009_devices();
+	phy_devs_count = phy_adrv9009_devs->len;
 	plugin_single_device_mode = phy_devs_count == 1;
 
 	/* Make a data structure for each adrv9009-phy device found */
 	subcomponents = g_new(struct plugin_subcomponent, phy_devs_count);
 	guint i;
 	for (i = 0; i < phy_devs_count; i++) {
-		// struct iio_device *dev = g_array_index(phy_adrv9009_devs, struct iio_device*, i);
-		// subcomponents[i].iio_dev = dev;
-		// subcomponents[i].ch0 = iio_device_find_channel(dev, "voltage0", false); /* RX1 */
-		// subcomponents[i].ch1 = iio_device_find_channel(dev, "voltage1", false); /* RX2 */
-		// subcomponents[i].ch2 = iio_device_find_channel(dev, "voltage2", false); /* OBS-RX1 */
-		// subcomponents[i].ch3 = iio_device_find_channel(dev, "voltage3", false); /* OBS-RX1 */
-		// subcomponents[i].alt_ch0 = iio_device_find_channel(dev, "altvoltage0", true);
-		// subcomponents[i].alt_ch1 = iio_device_find_channel(dev, "altvoltage1", true);
-		// subcomponents[i].out_ch0 = iio_device_find_channel(dev, "voltage0", true); /* TX1 */
-		// subcomponents[i].out_ch1 = iio_device_find_channel(dev, "voltage1", true); /* TX2 */
+		struct iio_device *dev = g_array_index(phy_adrv9009_devs, struct iio_device*, i);
+
+		subcomponents[i].iio_dev = dev;
+		subcomponents[i].ch0 = iio_device_find_channel(dev, "voltage0", false); /* RX1 */
+		subcomponents[i].ch1 = iio_device_find_channel(dev, "voltage1", false); /* RX2 */
+		subcomponents[i].ch2 = iio_device_find_channel(dev, "voltage2", false); /* OBS-RX1 */
+		subcomponents[i].ch3 = iio_device_find_channel(dev, "voltage3", false); /* OBS-RX1 */
+		subcomponents[i].alt_ch0 = iio_device_find_channel(dev, "altvoltage0", true);
+		subcomponents[i].alt_ch1 = iio_device_find_channel(dev, "altvoltage1", true);
+		subcomponents[i].out_ch0 = iio_device_find_channel(dev, "voltage0", true); /* TX1 */
+		subcomponents[i].out_ch1 = iio_device_find_channel(dev, "voltage1", true); /* TX2 */
 
 		if (i == 0) {
 			subcomponents[i].builder = builder;
@@ -1374,13 +1392,13 @@ static GtkWidget *adrv9009_init(GtkWidget *notebook, const char *ini_fn)
 	// 	load_profile(ini_fn);
 
 	/* Update all widgets with current values */
-	// printf("Updating widgets...\n");
-	// update_widgets();
-	// rx_freq_info_update();
-	// printf("Updating FIR filter...\n");
-	// profile_update();
-	// glb_settings_update_labels();
-	// rssi_update_labels();
+	printf("Updating widgets...\n");
+	update_widgets();
+	rx_freq_info_update();
+	printf("Updating FIR filter...\n");
+	profile_update();
+	glb_settings_update_labels();
+	rssi_update_labels();
 	if (dds)
 	{
 		dac_data_manager_freq_widgets_range_update(dac_tx_manager, get_gui_tx_sampling_freq() / 2.0);
@@ -1451,18 +1469,19 @@ static GtkWidget *adrv9009_init(GtkWidget *notebook, const char *ini_fn)
 		}
 	}
 
-	//add_ch_setup_check_fct(CAP_DEVICE, channel_combination_check);
-	// struct iio_device *adc_dev;
-	// struct extra_dev_info *adc_info;
+	// TO DO: figure out what changes need to be done in channel_combination_check()
+	// add_ch_setup_check_fct(CAP_DEVICE, channel_combination_check);
+	struct iio_device *adc_dev;
+	struct extra_dev_info *adc_info;
 
-	// adc_dev = iio_context_find_device(get_context_from_osc(), CAP_DEVICE);
+	adc_dev = iio_context_find_device(get_context_from_osc(), CAP_DEVICE);
 
-	// if (adc_dev) {
-	// 	adc_info = iio_device_get_data(adc_dev);
+	if (adc_dev) {
+		adc_info = iio_device_get_data(adc_dev);
 
-	// 	if (adc_info)
-	// 		adc_info->plugin_fft_corr = 20 * log10(1/sqrt(HANNING_ENBW));
-	// }
+		if (adc_info)
+			adc_info->plugin_fft_corr = 20 * log10(1/sqrt(HANNING_ENBW));
+	}
 
 	/* FIXME: Add later
 	 * block_diagram_init(builder, 2, "ADRV9009.svg", "ADRV9009-N_PCBZ.jpg");
@@ -1470,13 +1489,13 @@ static GtkWidget *adrv9009_init(GtkWidget *notebook, const char *ini_fn)
 	gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(profile_config), OSC_FILTER_FILE_PATH);
 	dac_data_manager_set_buffer_chooser_current_folder(dac_tx_manager, OSC_WAVEFORM_FILE_PATH);
 
-	// if (!dac_tx_manager)
-	// 	gtk_widget_hide(gtk_widget_get_parent(section_setting[SECTION_FPGA]));
+	if (!dac_tx_manager)
+		gtk_widget_hide(gtk_widget_get_parent(section_setting[SECTION_FPGA]));
 
-	// if (!cap)
-	// 	gtk_widget_hide(GTK_WIDGET(gtk_builder_get_object(builder, "frame_fpga_rx")));
+	if (!cap)
+		gtk_widget_hide(GTK_WIDGET(gtk_builder_get_object(builder, "frame_fpga_rx")));
 
-	//g_timeout_add(1000, (GSourceFunc) update_display, ctx);
+	g_timeout_add(1000, (GSourceFunc) update_display, ctx);
 	can_update_widgets = true;
 
 	return adrv9009_panel;
@@ -1558,6 +1577,8 @@ static void context_destroy(const char *ini_fn)
 		dac_tx_manager = NULL;
 	}
 
+	g_free(subcomponents);
+
 	osc_destroy_context(ctx);
 }
 
@@ -1568,11 +1589,7 @@ static bool adrv9009_identify(void)
 	/* Use the OSC's IIO context just to detect the devices */
 	struct iio_context *osc_ctx = get_context_from_osc();
 
-	if (!iio_context_find_device(osc_ctx, PHY_DEVICE))
-		return false;
-
-	/* Check if adrv9009+x is used */
-	return !iio_context_find_device(osc_ctx, "adrv9009-phy-B");
+	return !!iio_context_find_device(osc_ctx, PHY_DEVICE);
 }
 
 struct osc_plugin plugin = {
