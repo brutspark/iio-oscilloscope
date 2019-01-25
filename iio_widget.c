@@ -77,6 +77,8 @@ static void iio_widget_init(struct iio_widget *widget,
 	widget->update_value = update_value;
 	widget->save = save;
 	widget->priv = priv;
+	widget->priv_progress = NULL;
+	widget->priv_convert_function = NULL;
 }
 
 static void iio_spin_button_update_value(struct iio_widget *widget,
