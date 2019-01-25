@@ -331,6 +331,7 @@ int load_tal_profile(const char *file_name,
 
 		iio_context_set_timeout(ctx, 30000);
 
+		ret = INT_MAX;
 		guint i = 0;
 		for (; i < phy_devs_count; i++) {
 			ret2 = iio_device_attr_write_raw(subcomponents[i].iio_dev, "profile_config", buf, len);
@@ -554,14 +555,14 @@ static void rx_phase_rotation_update()
 
 	// Get all I/Q channels
 	GArray *out = g_array_new(FALSE, FALSE, sizeof(struct iio_channel *));
-	for (n = 0; n < iio_device_get_channels_count(cap); i++) {
-		struct iio_channel *ch = iio_device_get_channel(cap, i);
+	for (n = 0; n < iio_device_get_channels_count(cap); n++) {
+		struct iio_channel *ch = iio_device_get_channel(cap, n);
 
 		if (!iio_channel_is_output(ch) && iio_channel_is_scan_element(ch))
 			g_array_append_val(out, ch);
 	}
 
-	for (i = 0; i <= out->len; i += iq_cnt) {
+	for (i = 0; i < out->len - 1; i += iq_cnt) {
 		struct iio_channel *i_chn = g_array_index(out, struct iio_channel*, i);
 		struct iio_channel *q_chn = g_array_index(out, struct iio_channel*, i + 1);
 
@@ -611,7 +612,7 @@ static void rx_phase_rotation_update()
 		else
 			val[0] = (val[0] + val[1] + val[2] + val[3]) / 4.0;
 
-		gtk_spin_button_set_value(GTK_SPIN_BUTTON(subcomponents[i / cap_chn_count].rx_phase_rotation[i / iq_cnt]), val[0]);
+		gtk_spin_button_set_value(GTK_SPIN_BUTTON(subcomponents[i / cap_chn_count].rx_phase_rotation[(i % cap_chn_count) / iq_cnt]), val[0]);
 	}
 
 	g_array_free(out, FALSE);
@@ -949,11 +950,8 @@ void buildTabsInContainer(GtkBox *container_box, enum plugin_section section, bo
 
 	/* Create notebook pages */
 	for (i = 0; i < phy_devs_count; i++) {
-		//struct iio_device *dev = subcomponents[i].iio_dev;
-		//GtkWidget *page_label = gtk_label_new(iio_device_get_name(dev) ?: iio_device_get_id(dev));
-		gchar *label_name = g_strdup_printf("Device %i", i);
-		GtkWidget *page_label = gtk_label_new(label_name);
-		g_free(label_name);
+		struct iio_device *dev = subcomponents[i].iio_dev;
+		GtkWidget *page_label = gtk_label_new(iio_device_get_name(dev) ?: iio_device_get_id(dev));
 
 		GtkWidget *page_container = gtk_vbox_new(FALSE, 0);
 		gtk_notebook_append_page(notebook, page_container, page_label);
@@ -1040,6 +1038,12 @@ static GtkWidget *adrv9009_init(GtkWidget *notebook, const char *ini_fn)
 
 	/* Extract UI objects for each subcomponent */
 	gchar *ui_object_ids[] = {
+		"sampling_freq_rx",
+		"adjustment_sampl_freq_rx",
+		"sampling_freq_tx",
+		"adjustment_sampl_freq_tx",
+		"sampling_freq_obs",
+		"adjustment_sampl_freq_obs",
 		"adjustment_tx_lo_freq",
 		"global_settings_container",
 		"adjustment_hw_gain_rx1",
