@@ -126,6 +126,7 @@ static GtkWidget *section_setting[SECTION_NUM];
 static GtkWidget *ensm_mode;
 static GtkWidget *ensm_mode_available;
 static GtkWidget *profile_config;
+static struct iio_widget iio_ensm_mode_available;
 
 static gint this_page;
 static GtkNotebook *nbook;
@@ -211,20 +212,21 @@ static const char *adrv9009_sr_attribs[] = {
 	DDS_DEVICE".out_altvoltage7_TX2_Q_F2_scale",
 };
 */
-// static const char *adrv9009_driver_attribs[] = {
-// 	"load_tal_profile_file",
-// 	"dds_mode_tx1",
-// 	"dds_mode_tx2",
-// 	"global_settings_show",
-// 	"tx_show",
-// 	"rx_show",
-// 	"fpga_show",
-// 	"tx_channel_0",
-// 	"tx_channel_1",
-// 	"tx_channel_2",
-// 	"tx_channel_3",
-// 	"dac_buf_filename",
-// };
+static const char *adrv9009_driver_attribs[] = {
+	"load_tal_profile_file",
+	"ensm_mode",
+	"dds_mode_tx1",
+	"dds_mode_tx2",
+	"global_settings_show",
+	"tx_show",
+	"rx_show",
+	"fpga_show",
+	"tx_channel_0",
+	"tx_channel_1",
+	"tx_channel_2",
+	"tx_channel_3",
+	"dac_buf_filename",
+};
 
 static void profile_update(void);
 
@@ -452,6 +454,26 @@ static void glb_settings_update_labels(void)
 	}
 }
 
+static void set_ensm_mode_of_all_devices(const char *mode)
+{
+	guint i = 0;
+
+	for (; i < phy_devs_count; i++) {
+		iio_device_attr_write_raw(subcomponents[i].iio_dev, "ensm_mode", mode, strlen(mode));
+	}
+}
+
+static void on_ensm_mode_available_changed(void)
+{
+	/* Sync all devices to the same ensm_mode */
+	if (!plugin_single_device_mode) {
+		gchar *mode = gtk_combo_box_get_active_text(GTK_COMBO_BOX(ensm_mode_available));
+		set_ensm_mode_of_all_devices(mode);
+	}
+
+	glb_settings_update_labels();
+}
+
 static void rx_freq_info_update(void)
 {
 	double lo_freq;
@@ -625,6 +647,10 @@ static void update_widgets(void)
 	for (; i < phy_devs_count; i++) {
 		iio_update_widgets_of_device(subcomponents[i].widgets, subcomponents[i].num_glb +
 			subcomponents[i].num_tx + subcomponents[i].num_rx + subcomponents[i].num_obsrx, subcomponents[i].iio_dev);
+	}
+
+	if (!plugin_single_device_mode) {
+		iio_widget_update(&iio_ensm_mode_available);
 	}
 
 	if (dds)
@@ -830,82 +856,84 @@ static int adrv9009_handle_driver(const char *attrib, const char *value)
 {
 	int ret = 0;
 
-	// if (MATCH_ATTRIB("load_tal_profile_file")) {
-	// 	if (value[0]) {
-	// 		load_tal_profile(value, adrv9009_panel,
-	// 						 GTK_FILE_CHOOSER(profile_config),
-	// 						 last_profile);
-	// 	}
-	// } else if (MATCH_ATTRIB("dds_mode_tx1")) {
-	// 	dac_data_manager_set_dds_mode(dac_tx_manager,
-	// 								  DDS_DEVICE, 1, atoi(value));
-	// } else if (MATCH_ATTRIB("dds_mode_tx2")) {
-	// 	dac_data_manager_set_dds_mode(dac_tx_manager,
-	// 								  DDS_DEVICE, 2, atoi(value));
-	// } else if (MATCH_ATTRIB("global_settings_show")) {
-	// 	gtk_toggle_tool_button_set_active(
-	// 		section_toggle[SECTION_GLOBAL], !!atoi(value));
-	// 	hide_section_cb(section_toggle[SECTION_GLOBAL],
-	// 					section_setting[SECTION_GLOBAL]);
-	// } else if (MATCH_ATTRIB("tx_show")) {
-	// 	gtk_toggle_tool_button_set_active(
-	// 		section_toggle[SECTION_TX], !!atoi(value));
-	// 	hide_section_cb(section_toggle[SECTION_TX],
-	// 					section_setting[SECTION_TX]);
-	// } else if (MATCH_ATTRIB("rx_show")) {
-	// 	gtk_toggle_tool_button_set_active(
-	// 		section_toggle[SECTION_RX], !!atoi(value));
-	// 	hide_section_cb(section_toggle[SECTION_RX],
-	// 					section_setting[SECTION_RX]);
-	// } else if (MATCH_ATTRIB("obs_show")) {
-	// 	gtk_toggle_tool_button_set_active(
-	// 		section_toggle[SECTION_OBS], !!atoi(value));
-	// 	hide_section_cb(section_toggle[SECTION_OBS],
-	// 					section_setting[SECTION_OBS]);
-	// } else if (MATCH_ATTRIB("fpga_show")) {
-	// 	gtk_toggle_tool_button_set_active(
-	// 		section_toggle[SECTION_FPGA], !!atoi(value));
-	// 	hide_section_cb(section_toggle[SECTION_FPGA],
-	// 					section_setting[SECTION_FPGA]);
-	// } else if (!strncmp(attrib, "tx_channel_", sizeof("tx_channel_") - 1)) {
-	// 	int tx = atoi(attrib + sizeof("tx_channel_") - 1);
-	// 	dac_data_manager_set_tx_channel_state(
-	// 		dac_tx_manager, tx, !!atoi(value));
-	// } else if (MATCH_ATTRIB("dac_buf_filename")) {
-	// 	dac_data_manager_set_buffer_chooser_filename(
-	// 		dac_tx_manager, value);
-	// } else if (MATCH_ATTRIB("SYNC_RELOAD"))	{
-	// 	if (can_update_widgets)
-	// 		reload_button_clicked(NULL, NULL);
-	// } else {
-	// 	return -EINVAL;
-	// }
+	if (MATCH_ATTRIB("load_tal_profile_file")) {
+		if (value[0]) {
+			load_tal_profile(value, adrv9009_panel,
+							 GTK_FILE_CHOOSER(profile_config),
+							 last_profile);
+		}
+	} else if (MATCH_ATTRIB("ensm_mode")) {
+		if (!plugin_single_device_mode) {
+			set_ensm_mode_of_all_devices(value);
+		}
+	} else if (MATCH_ATTRIB("dds_mode_tx1")) {
+		dac_data_manager_set_dds_mode(dac_tx_manager,
+					DDS_DEVICE, 1, atoi(value));
+	} else if (MATCH_ATTRIB("dds_mode_tx2")) {
+		dac_data_manager_set_dds_mode(dac_tx_manager,
+					DDS_DEVICE, 2, atoi(value));
+	} else if (MATCH_ATTRIB("global_settings_show")) {
+		gtk_toggle_tool_button_set_active(
+			section_toggle[SECTION_GLOBAL], !!atoi(value));
+		hide_section_cb(section_toggle[SECTION_GLOBAL],
+						section_setting[SECTION_GLOBAL]);
+	} else if (MATCH_ATTRIB("tx_show")) {
+		gtk_toggle_tool_button_set_active(
+			section_toggle[SECTION_TX], !!atoi(value));
+		hide_section_cb(section_toggle[SECTION_TX],
+						section_setting[SECTION_TX]);
+	} else if (MATCH_ATTRIB("rx_show")) {
+		gtk_toggle_tool_button_set_active(
+			section_toggle[SECTION_RX], !!atoi(value));
+		hide_section_cb(section_toggle[SECTION_RX],
+						section_setting[SECTION_RX]);
+	} else if (MATCH_ATTRIB("obs_show")) {
+		gtk_toggle_tool_button_set_active(
+			section_toggle[SECTION_OBS], !!atoi(value));
+		hide_section_cb(section_toggle[SECTION_OBS],
+						section_setting[SECTION_OBS]);
+	} else if (MATCH_ATTRIB("fpga_show")) {
+		gtk_toggle_tool_button_set_active(
+			section_toggle[SECTION_FPGA], !!atoi(value));
+		hide_section_cb(section_toggle[SECTION_FPGA],
+						section_setting[SECTION_FPGA]);
+	} else if (!strncmp(attrib, "tx_channel_", sizeof("tx_channel_") - 1)) {
+		int tx = atoi(attrib + sizeof("tx_channel_") - 1);
+		dac_data_manager_set_tx_channel_state(
+			dac_tx_manager, tx, !!atoi(value));
+	} else if (MATCH_ATTRIB("dac_buf_filename")) {
+		dac_data_manager_set_buffer_chooser_filename(
+			dac_tx_manager, value);
+	} else if (MATCH_ATTRIB("SYNC_RELOAD"))	{
+		if (can_update_widgets)
+			reload_button_clicked(NULL, NULL);
+	} else {
+		return -EINVAL;
+	}
 
 	return ret;
 }
 
 static int adrv9009_handle(int line, const char *attrib, const char *value)
 {
-	return osc_plugin_default_handle(ctx, line, attrib, value,
-									 adrv9009_handle_driver);
+	return osc_plugin_default_handle(ctx, line, attrib, value, adrv9009_handle_driver);
 }
 
 static void load_profile(const char *ini_fn)
 {
 	// struct iio_channel *ch;
 	// char *value;
-	// unsigned int i;
+	unsigned int i;
 
-	// for (i = 0; i < ARRAY_SIZE(adrv9009_driver_attribs); i++) {
-	// 	char *value = read_token_from_ini(ini_fn, THIS_DRIVER,
-	// 									  adrv9009_driver_attribs[i]);
+	for (i = 0; i < ARRAY_SIZE(adrv9009_driver_attribs); i++) {
+		char *value = read_token_from_ini(ini_fn, THIS_DRIVER, adrv9009_driver_attribs[i]);
 
-	// 	if (value) {
-	// 		adrv9009_handle_driver(
-	// 			adrv9009_driver_attribs[i], value);
-	// 		free(value);
-	// 	}
-	// }
+		if (value) {
+			adrv9009_handle_driver(
+				adrv9009_driver_attribs[i], value);
+			free(value);
+		}
+	}
 
 	// /* The gain_control_mode iio attribute should be set prior to setting
 	//  * hardwaregain iio attribute. This is neccessary due to the fact that
@@ -1059,7 +1087,8 @@ static GtkWidget *adrv9009_init(GtkWidget *notebook, const char *ini_fn)
 		"adjust_rx1_phase",
 		"adjust_rx2_phase",
 		"box_fpga_receive",
-		NULL};
+		NULL
+	};
 
 	for (i = 0; i < phy_devs_count; i++) {
 		if (i > 0) {
@@ -1161,16 +1190,23 @@ static GtkWidget *adrv9009_init(GtkWidget *notebook, const char *ini_fn)
 	gtk_adjustment_set_upper(sfreq_adj, 307.20); // are these 3 lines necessary?
 
 	/* Bind the IIO device files to the GUI widgets */
+
+	/* Treat 'ensm_mode_available' separately because it will be shared between devices (when more are avaialable) */
+	if (plugin_single_device_mode) {
+		iio_combo_box_init(&subcomponents[0].glb_widgets[subcomponents[0].num_glb++],
+		                   subcomponents[0].iio_dev, NULL, "ensm_mode", "ensm_mode_available",
+		                   ensm_mode_available, NULL);
+	} else {
+		iio_combo_box_init(&iio_ensm_mode_available, subcomponents[0].iio_dev, NULL,
+			"ensm_mode", "ensm_mode_available", ensm_mode_available, NULL);
+	}
+
 	for (i = 0; i < phy_devs_count; i++) {
 		GtkBuilder *builder = subcomponents[i].builder;
 
 		subcomponents[i].glb_widgets = subcomponents[i].widgets;
 
 		/* Global settings */
-
-		// iio_combo_box_init(&glb_widgets[num_glb++],
-		//                    dev, NULL, "ensm_mode", "ensm_mode_available",
-		//                    ensm_mode_available, NULL);
 
 		iio_toggle_button_init_from_builder(&subcomponents[i].glb_widgets[subcomponents[i].num_glb++],
 		                                    subcomponents[i].iio_dev, NULL, "calibrate_rx_qec_en", builder,
@@ -1392,8 +1428,8 @@ static GtkWidget *adrv9009_init(GtkWidget *notebook, const char *ini_fn)
 		}
 	}
 
-	// if (ini_fn)
-	// 	load_profile(ini_fn);
+	if (ini_fn)
+		load_profile(ini_fn);
 
 	/* Update all widgets with current values */
 	printf("Updating widgets...\n");
@@ -1441,7 +1477,7 @@ static GtkWidget *adrv9009_init(GtkWidget *notebook, const char *ini_fn)
 						   G_CALLBACK(hide_section_cb), section_setting[SECTION_FPGA]);
 
 	g_signal_connect_after(ensm_mode_available, "changed",
-						   G_CALLBACK(glb_settings_update_labels), NULL);
+						   G_CALLBACK(on_ensm_mode_available_changed), NULL);
 
 	for (i = 0; i < phy_devs_count; i++) {
 		g_signal_connect_after(subcomponents[i].rx_gain_control_modes_rx1, "changed",
@@ -1520,42 +1556,44 @@ static void adrv9009_get_preferred_size(int *width, int *height)
 		*height = 800;
 }
 
-// static void save_widgets_to_ini(FILE *f)
-// {
-// 	fprintf(f, "load_tal_profile_file = %s\n"
-// 			   "dds_mode_tx1 = %i\n"
-// 			   "dds_mode_tx2 = %i\n"
-// 			   "dac_buf_filename = %s\n"
-// 			   "tx_channel_0 = %i\n"
-// 			   "tx_channel_1 = %i\n"
-// 			   "tx_channel_2 = %i\n"
-// 			   "tx_channel_3 = %i\n"
-// 			   "global_settings_show = %i\n"
-// 			   "tx_show = %i\n"
-// 			   "rx_show = %i\n"
-// 			   "obs_show = %i\n"
-// 			   "fpga_show = %i\n",
-// 			last_profile,
-// 			dac_data_manager_get_dds_mode(dac_tx_manager, DDS_DEVICE, 1),
-// 			dac_data_manager_get_dds_mode(dac_tx_manager, DDS_DEVICE, 2),
-// 			dac_data_manager_get_buffer_chooser_filename(dac_tx_manager),
-// 			dac_data_manager_get_tx_channel_state(dac_tx_manager, 0),
-// 			dac_data_manager_get_tx_channel_state(dac_tx_manager, 1),
-// 			dac_data_manager_get_tx_channel_state(dac_tx_manager, 2),
-// 			dac_data_manager_get_tx_channel_state(dac_tx_manager, 3),
-// 			!!gtk_toggle_tool_button_get_active(section_toggle[SECTION_GLOBAL]),
-// 			!!gtk_toggle_tool_button_get_active(section_toggle[SECTION_TX]),
-// 			!!gtk_toggle_tool_button_get_active(section_toggle[SECTION_RX]),
-// 			!!gtk_toggle_tool_button_get_active(section_toggle[SECTION_OBS]),
-// 			!!gtk_toggle_tool_button_get_active(section_toggle[SECTION_FPGA]));
-// }
+static void save_widgets_to_ini(FILE *f)
+{
+	fprintf(f, "load_tal_profile_file = %s\n"
+			   "ensm_mode=%s\n"
+			   "dds_mode_tx1 = %i\n"
+			   "dds_mode_tx2 = %i\n"
+			   "dac_buf_filename = %s\n"
+			   "tx_channel_0 = %i\n"
+			   "tx_channel_1 = %i\n"
+			   "tx_channel_2 = %i\n"
+			   "tx_channel_3 = %i\n"
+			   "global_settings_show = %i\n"
+			   "tx_show = %i\n"
+			   "rx_show = %i\n"
+			   "obs_show = %i\n"
+			   "fpga_show = %i\n",
+			last_profile,
+			(plugin_single_device_mode ? "" : gtk_combo_box_get_active_text(GTK_COMBO_BOX(ensm_mode_available))),
+			dac_data_manager_get_dds_mode(dac_tx_manager, DDS_DEVICE, 1),
+			dac_data_manager_get_dds_mode(dac_tx_manager, DDS_DEVICE, 2),
+			dac_data_manager_get_buffer_chooser_filename(dac_tx_manager),
+			dac_data_manager_get_tx_channel_state(dac_tx_manager, 0),
+			dac_data_manager_get_tx_channel_state(dac_tx_manager, 1),
+			dac_data_manager_get_tx_channel_state(dac_tx_manager, 2),
+			dac_data_manager_get_tx_channel_state(dac_tx_manager, 3),
+			!!gtk_toggle_tool_button_get_active(section_toggle[SECTION_GLOBAL]),
+			!!gtk_toggle_tool_button_get_active(section_toggle[SECTION_TX]),
+			!!gtk_toggle_tool_button_get_active(section_toggle[SECTION_RX]),
+			!!gtk_toggle_tool_button_get_active(section_toggle[SECTION_OBS]),
+			!!gtk_toggle_tool_button_get_active(section_toggle[SECTION_FPGA]));
+}
 
 static void save_profile(const char *ini_fn)
 {
-	// FILE *f = fopen(ini_fn, "a");
+	FILE *f = fopen(ini_fn, "a");
 
-	// if (f)
-	// {
+	if (f)
+	{
 	// 	save_to_ini(f, THIS_DRIVER, dev, adrv9009_sr_attribs,
 	// 				ARRAY_SIZE(adrv9009_sr_attribs));
 
@@ -1563,17 +1601,17 @@ static void save_profile(const char *ini_fn)
 	// 		save_to_ini(f, NULL, dds, adrv9009_sr_attribs,
 	// 					ARRAY_SIZE(adrv9009_sr_attribs));
 
-	// 	save_widgets_to_ini(f);
-	// 	fclose(f);
-	// }
+		save_widgets_to_ini(f);
+		fclose(f);
+	}
 }
 
 static void context_destroy(const char *ini_fn)
 {
 	g_source_remove_by_user_data(ctx);
 
-	// if (ini_fn)
-	// 	save_profile(ini_fn);
+	if (ini_fn)
+		save_profile(ini_fn);
 
 	if (dac_tx_manager)
 	{
