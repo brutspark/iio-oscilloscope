@@ -100,6 +100,10 @@ struct plugin_subcomponent
 	unsigned int rx1_gain, rx2_gain, obs_gain;
 	unsigned int trx_lo, aux_lo;
 	unsigned int rx_sample_freq, tx_sample_freq;
+
+	/* Save/Restore attributes */
+	char **sr_attribs;
+	size_t sr_attribs_count;
 };
 
 extern bool dma_valid_selection(const char *device, unsigned mask, unsigned channel_count);
@@ -132,52 +136,55 @@ static gint this_page;
 static GtkNotebook *nbook;
 static GtkWidget *adrv9009_panel;
 static gboolean plugin_detached;
-/*
-static const char *adrv9009_sr_attribs[] = {
-	PHY_DEVICE".calibrate_fhm_en",
-	PHY_DEVICE".calibrate_rx_phase_correction_en",
-	PHY_DEVICE".calibrate_rx_qec_en",
-	PHY_DEVICE".calibrate_tx_lol_en",
-	PHY_DEVICE".calibrate_tx_lol_ext_en",
-	PHY_DEVICE".calibrate_tx_qec_en",
-	PHY_DEVICE".ensm_mode",
-	PHY_DEVICE".in_voltage0_gain_control_mode",
-	PHY_DEVICE".in_voltage0_gain_control_pin_mode_en",
-	PHY_DEVICE".in_voltage0_hardwaregain",
-	PHY_DEVICE".in_voltage0_hd2_tracking_en",
-	PHY_DEVICE".in_voltage0_powerdown",
-	PHY_DEVICE".in_voltage0_quadrature_tracking_en",
-	PHY_DEVICE".in_voltage1_gain_control_pin_mode_en",
-	PHY_DEVICE".in_voltage1_hardwaregain",
-	PHY_DEVICE".in_voltage1_hd2_tracking_en",
-	PHY_DEVICE".in_voltage1_powerdown",
-	PHY_DEVICE".in_voltage1_quadrature_tracking_en",
-	PHY_DEVICE".in_voltage2_hardwaregain",
-	PHY_DEVICE".in_voltage2_powerdown",
-	PHY_DEVICE".in_voltage2_quadrature_tracking_en",
-	PHY_DEVICE".in_voltage2_rf_port_select",
-	PHY_DEVICE".in_voltage2_rf_port_select_available",
-	PHY_DEVICE".in_voltage3_hardwaregain",
-	PHY_DEVICE".in_voltage3_powerdown",
-	PHY_DEVICE".in_voltage3_quadrature_tracking_en",
-	PHY_DEVICE".in_voltage3_rf_port_select",
-	PHY_DEVICE".out_altvoltage0_TRX_LO_frequency",
-	PHY_DEVICE".out_altvoltage0_TRX_LO_frequency_hopping_mode_enable",
-	PHY_DEVICE".out_altvoltage1_AUX_OBS_RX_LO_frequency",
-	PHY_DEVICE".out_voltage0_atten_control_pin_mode_en",
-	PHY_DEVICE".out_voltage0_hardwaregain",
-	PHY_DEVICE".out_voltage0_lo_leakage_tracking_en",
-	PHY_DEVICE".out_voltage0_pa_protection_en",
-	PHY_DEVICE".out_voltage0_powerdown",
-	PHY_DEVICE".out_voltage0_quadrature_tracking_en",
-	PHY_DEVICE".out_voltage1_atten_control_pin_mode_en",
-	PHY_DEVICE".out_voltage1_hardwaregain",
-	PHY_DEVICE".out_voltage1_lo_leakage_tracking_en",
-	PHY_DEVICE".out_voltage1_pa_protection_en",
-	PHY_DEVICE".out_voltage1_powerdown",
-	PHY_DEVICE".out_voltage1_quadrature_tracking_en",
-	PHY_DEVICE".out_voltage1_rf_bandwidth",
 
+static const char *adrv9009_sr_attribs[] = {
+	".calibrate_fhm_en",
+	".calibrate_rx_phase_correction_en",
+	".calibrate_rx_qec_en",
+	".calibrate_tx_lol_en",
+	".calibrate_tx_lol_ext_en",
+	".calibrate_tx_qec_en",
+	".ensm_mode",
+	".in_voltage0_gain_control_mode",
+	".in_voltage0_gain_control_pin_mode_en",
+	".in_voltage0_hardwaregain",
+	".in_voltage0_hd2_tracking_en",
+	".in_voltage0_powerdown",
+	".in_voltage0_quadrature_tracking_en",
+	".in_voltage1_gain_control_pin_mode_en",
+	".in_voltage1_hardwaregain",
+	".in_voltage1_hd2_tracking_en",
+	".in_voltage1_powerdown",
+	".in_voltage1_quadrature_tracking_en",
+	".in_voltage2_hardwaregain",
+	".in_voltage2_powerdown",
+	".in_voltage2_quadrature_tracking_en",
+	".in_voltage2_rf_port_select",
+	".in_voltage2_rf_port_select_available",
+	".in_voltage3_hardwaregain",
+	".in_voltage3_powerdown",
+	".in_voltage3_quadrature_tracking_en",
+	".in_voltage3_rf_port_select",
+	".out_altvoltage0_TRX_LO_frequency",
+	".out_altvoltage0_TRX_LO_frequency_hopping_mode_enable",
+	".out_altvoltage1_AUX_OBS_RX_LO_frequency",
+	".out_voltage0_atten_control_pin_mode_en",
+	".out_voltage0_hardwaregain",
+	".out_voltage0_lo_leakage_tracking_en",
+	".out_voltage0_pa_protection_en",
+	".out_voltage0_powerdown",
+	".out_voltage0_quadrature_tracking_en",
+	".out_voltage1_atten_control_pin_mode_en",
+	".out_voltage1_hardwaregain",
+	".out_voltage1_lo_leakage_tracking_en",
+	".out_voltage1_pa_protection_en",
+	".out_voltage1_powerdown",
+	".out_voltage1_quadrature_tracking_en",
+	".out_voltage1_rf_bandwidth",
+};
+
+// TO DO: Make scalable for TX3, TX4,..
+static const char *dds_device_sr_attribs[] = {
 	DDS_DEVICE".out_altvoltage0_TX1_I_F1_frequency",
 	DDS_DEVICE".out_altvoltage0_TX1_I_F1_phase",
 	DDS_DEVICE".out_altvoltage0_TX1_I_F1_raw",
@@ -211,20 +218,17 @@ static const char *adrv9009_sr_attribs[] = {
 	DDS_DEVICE".out_altvoltage7_TX2_Q_F2_raw",
 	DDS_DEVICE".out_altvoltage7_TX2_Q_F2_scale",
 };
-*/
+
 static const char *adrv9009_driver_attribs[] = {
 	"load_tal_profile_file",
 	"ensm_mode",
-	"dds_mode_tx1",
-	"dds_mode_tx2",
+	// TO DO: Make scalable for TX3, TX4,..
+	// "dds_mode_tx1",
+	// "dds_mode_tx2",
 	"global_settings_show",
 	"tx_show",
 	"rx_show",
 	"fpga_show",
-	"tx_channel_0",
-	"tx_channel_1",
-	"tx_channel_2",
-	"tx_channel_3",
 	"dac_buf_filename",
 };
 
@@ -921,12 +925,11 @@ static int adrv9009_handle(int line, const char *attrib, const char *value)
 
 static void load_profile(const char *ini_fn)
 {
-	// struct iio_channel *ch;
-	// char *value;
+	char *value;
 	unsigned int i;
 
 	for (i = 0; i < ARRAY_SIZE(adrv9009_driver_attribs); i++) {
-		char *value = read_token_from_ini(ini_fn, THIS_DRIVER, adrv9009_driver_attribs[i]);
+		value = read_token_from_ini(ini_fn, THIS_DRIVER, adrv9009_driver_attribs[i]);
 
 		if (value) {
 			adrv9009_handle_driver(
@@ -935,36 +938,45 @@ static void load_profile(const char *ini_fn)
 		}
 	}
 
-	// /* The gain_control_mode iio attribute should be set prior to setting
-	//  * hardwaregain iio attribute. This is neccessary due to the fact that
-	//  * some control modes change the hardwaregain automatically. */
-	// ch = iio_device_find_channel(dev, "voltage0", false);
-	// value = read_token_from_ini(ini_fn, THIS_DRIVER,
-	// 							PHY_DEVICE ".in_voltage0_gain_control_mode");
+	/* The gain_control_mode iio attribute should be set prior to setting
+	 * hardwaregain iio attribute. This is neccessary due to the fact that
+	 * some control modes change the hardwaregain automatically. */
+	for (i = 0; i < phy_devs_count; i++){
+		struct iio_device *dev = subcomponents[i].iio_dev;
+		const char *dev_name  = iio_device_get_name(subcomponents[i].iio_dev);
+		struct iio_channel *ch;
+		char *attrib_name;
 
-	// if (ch && value) {
-	// 	iio_channel_attr_write(ch, "gain_control_mode", value);
-	// 	free(value);
-	// }
+		ch = iio_device_find_channel(dev, "voltage0", false);
+		attrib_name = g_strconcat(dev_name, ".in_voltage0_gain_control_mode", NULL);
+		value = read_token_from_ini(ini_fn, THIS_DRIVER, attrib_name);
+		g_free(attrib_name);
 
-	// ch = iio_device_find_channel(dev, "voltage1", false);
-	// value = read_token_from_ini(ini_fn, THIS_DRIVER,
-	// 							PHY_DEVICE ".in_voltage1_gain_control_mode");
+		if (ch && value) {
+			iio_channel_attr_write(ch, "gain_control_mode", value);
+			free(value);
+		}
 
-	// if (ch && value) {
-	// 	iio_channel_attr_write(ch, "gain_control_mode", value);
-	// 	free(value);
-	// }
+		ch = iio_device_find_channel(dev, "voltage1", false);
+		attrib_name = g_strconcat(dev_name, ".in_voltage1_gain_control_mode", NULL);
+		value = read_token_from_ini(ini_fn, THIS_DRIVER, attrib_name);
+		g_free(attrib_name);
 
-	// update_from_ini(ini_fn, THIS_DRIVER, dev, adrv9009_sr_attribs,
-	// 				ARRAY_SIZE(adrv9009_sr_attribs));
+		if (ch && value) {
+			iio_channel_attr_write(ch, "gain_control_mode", value);
+			free(value);
+		}
 
-	// if (dds)
-	// 	update_from_ini(ini_fn, THIS_DRIVER, dds, adrv9009_sr_attribs,
-	// 					ARRAY_SIZE(adrv9009_sr_attribs));
+		update_from_ini(ini_fn, THIS_DRIVER, subcomponents[i].iio_dev, (const char * const*)subcomponents[i].sr_attribs,
+					subcomponents[i].sr_attribs_count);
+	}
 
-	// if (can_update_widgets)
-	// 	reload_button_clicked(NULL, NULL);
+	if (dds)
+		update_from_ini(ini_fn, THIS_DRIVER, dds, dds_device_sr_attribs,
+						ARRAY_SIZE(dds_device_sr_attribs));
+
+	if (can_update_widgets)
+		reload_button_clicked(NULL, NULL);
 }
 
 /* Constructs a notebook with a page for each plugin subcomponent
@@ -1057,6 +1069,15 @@ static GtkWidget *adrv9009_init(GtkWidget *notebook, const char *ini_fn)
 		subcomponents[i].aux_lo = 0;
 		subcomponents[i].rx_sample_freq = 0;
 		subcomponents[i].tx_sample_freq = 0;
+
+		subcomponents[i].sr_attribs_count = ARRAY_SIZE(adrv9009_sr_attribs);
+		subcomponents[i].sr_attribs = g_new(char *, subcomponents[i].sr_attribs_count);
+		size_t n = 0;
+		for (; n < subcomponents[i].sr_attribs_count; n++)
+		{
+			subcomponents[i].sr_attribs[n] = g_strconcat(
+				iio_device_get_name(subcomponents[i].iio_dev), adrv9009_sr_attribs[n], NULL);
+		}
 	}
 
 	if (dds) {
@@ -1109,7 +1130,7 @@ static GtkWidget *adrv9009_init(GtkWidget *notebook, const char *ini_fn)
 			GTK_WIDGET(gtk_builder_get_object(subcomponents[i].builder, "boxFpgaReceive"));
 	}
 
-	// Keep references to widgets for each subcomponent
+	/* Keep references to widgets for each subcomponent */
 	for (i = 0; i < phy_devs_count; i++) {
 		GtkBuilder *builder = subcomponents[i].builder;
 
@@ -1560,13 +1581,9 @@ static void save_widgets_to_ini(FILE *f)
 {
 	fprintf(f, "load_tal_profile_file = %s\n"
 			   "ensm_mode=%s\n"
-			   "dds_mode_tx1 = %i\n"
-			   "dds_mode_tx2 = %i\n"
+			//    "dds_mode_tx1 = %i\n"
+			//    "dds_mode_tx2 = %i\n"
 			   "dac_buf_filename = %s\n"
-			   "tx_channel_0 = %i\n"
-			   "tx_channel_1 = %i\n"
-			   "tx_channel_2 = %i\n"
-			   "tx_channel_3 = %i\n"
 			   "global_settings_show = %i\n"
 			   "tx_show = %i\n"
 			   "rx_show = %i\n"
@@ -1574,18 +1591,22 @@ static void save_widgets_to_ini(FILE *f)
 			   "fpga_show = %i\n",
 			last_profile,
 			(plugin_single_device_mode ? "" : gtk_combo_box_get_active_text(GTK_COMBO_BOX(ensm_mode_available))),
-			dac_data_manager_get_dds_mode(dac_tx_manager, DDS_DEVICE, 1),
-			dac_data_manager_get_dds_mode(dac_tx_manager, DDS_DEVICE, 2),
+			// dac_data_manager_get_dds_mode(dac_tx_manager, DDS_DEVICE, 1),
+			// dac_data_manager_get_dds_mode(dac_tx_manager, DDS_DEVICE, 2),
 			dac_data_manager_get_buffer_chooser_filename(dac_tx_manager),
-			dac_data_manager_get_tx_channel_state(dac_tx_manager, 0),
-			dac_data_manager_get_tx_channel_state(dac_tx_manager, 1),
-			dac_data_manager_get_tx_channel_state(dac_tx_manager, 2),
-			dac_data_manager_get_tx_channel_state(dac_tx_manager, 3),
 			!!gtk_toggle_tool_button_get_active(section_toggle[SECTION_GLOBAL]),
 			!!gtk_toggle_tool_button_get_active(section_toggle[SECTION_TX]),
 			!!gtk_toggle_tool_button_get_active(section_toggle[SECTION_RX]),
 			!!gtk_toggle_tool_button_get_active(section_toggle[SECTION_OBS]),
-			!!gtk_toggle_tool_button_get_active(section_toggle[SECTION_FPGA]));
+			!!gtk_toggle_tool_button_get_active(section_toggle[SECTION_FPGA])
+		);
+
+	/* Save the state of each TX channel */
+	int i = 0, tx_ch_count = device_scan_elements_count(dds);
+	for (; i < tx_ch_count; i++) {
+		fprintf(f, "tx_channel_%i = %i\n", i, dac_data_manager_get_tx_channel_state(dac_tx_manager, i));
+	}
+
 }
 
 static void save_profile(const char *ini_fn)
@@ -1594,12 +1615,17 @@ static void save_profile(const char *ini_fn)
 
 	if (f)
 	{
-	// 	save_to_ini(f, THIS_DRIVER, dev, adrv9009_sr_attribs,
-	// 				ARRAY_SIZE(adrv9009_sr_attribs));
+		guint i = 0;
 
-	// 	if (dds)
-	// 		save_to_ini(f, NULL, dds, adrv9009_sr_attribs,
-	// 					ARRAY_SIZE(adrv9009_sr_attribs));
+		write_driver_name_to_ini(f, THIS_DRIVER);
+		for (; i < phy_devs_count; i++) {
+			save_to_ini(f, NULL, subcomponents[i].iio_dev, (const char * const*)subcomponents[i].sr_attribs,
+						subcomponents[i].sr_attribs_count);
+		}
+
+		if (dds)
+			save_to_ini(f, NULL, dds, dds_device_sr_attribs,
+						ARRAY_SIZE(dds_device_sr_attribs));
 
 		save_widgets_to_ini(f);
 		fclose(f);
@@ -1619,6 +1645,15 @@ static void context_destroy(const char *ini_fn)
 		dac_tx_manager = NULL;
 	}
 
+	/* Subcomponents cleanup */
+	guint i = 0;
+	for (; i < phy_devs_count; i++) {
+		size_t n = 0;
+		for (; n < subcomponents[i].sr_attribs_count; n++) {
+			g_free(subcomponents[i].sr_attribs[n]);
+		}
+		g_free(subcomponents[i].sr_attribs);
+	}
 	g_free(subcomponents);
 
 	osc_destroy_context(ctx);
