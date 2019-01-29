@@ -95,6 +95,8 @@ struct dds_dac {
 	unsigned tx_count;
 	struct dds_tx tx1;
 	struct dds_tx tx2;
+	struct dds_tx tx3;
+	struct dds_tx tx4;
 	int dds_mode;
 	unsigned tones_count;
 
@@ -1059,6 +1061,14 @@ static GtkWidget *gui_dac_create(struct dds_dac *ddac)
 	if (ddac->tx_count == 2)
 		gtk_table_attach(GTK_TABLE(dac_table), gui_tx_create(&ddac->tx2),
 			1, 2, 1, 2, GTK_FILL, GTK_FILL, 0, 0);
+	if (ddac->tx_count == 4) {
+		gtk_table_attach(GTK_TABLE(dac_table), gui_tx_create(&ddac->tx2),
+			1, 2, 1, 2, GTK_FILL, GTK_FILL, 0, 0);
+		gtk_table_attach(GTK_TABLE(dac_table), gui_tx_create(&ddac->tx3),
+			2, 3, 1, 2, GTK_FILL, GTK_FILL, 0, 0);
+		gtk_table_attach(GTK_TABLE(dac_table), gui_tx_create(&ddac->tx4),
+			3, 4, 1, 2, GTK_FILL, GTK_FILL, 0, 0);
+	}
 
 	ddac->frame = dac_frm;
 	gtk_widget_show(dac_frm);
@@ -1322,6 +1332,10 @@ static int dac_channels_assign(struct dds_dac *ddac)
 			tx = &ddac->tx1;
 		else if (tx_index == 2)
 			tx = &ddac->tx2;
+		else if (tx_index == 3)
+			tx = &ddac->tx3;
+		else if (tx_index == 4)
+			tx = &ddac->tx4;
 		else
 			continue;
 
@@ -1534,6 +1548,11 @@ static void manage_dds_mode (GtkComboBox *box, struct dds_tx *tx)
 		if (manager->dac2.tx_count == 2)
 			tx4 = manager->dac2.tx2.dds_mode_widget;
 	}
+	if (manager->dac1.tx_count == 4) {
+		tx2 = manager->dac1.tx2.dds_mode_widget;
+		tx3 = manager->dac1.tx3.dds_mode_widget;
+		tx4 = manager->dac1.tx4.dds_mode_widget;
+	}
 
 	active = gtk_combo_box_get_active(box);
 
@@ -1548,11 +1567,17 @@ static void manage_dds_mode (GtkComboBox *box, struct dds_tx *tx)
 		}
 		if (tx3 && gtk_combo_box_get_active(GTK_COMBO_BOX(tx3)) == DDS_BUFFER) {
 			gtk_combo_box_set_active(GTK_COMBO_BOX(tx3), active);
-			manage_dds_mode(GTK_COMBO_BOX(tx3), &manager->dac2.tx1);
+			if (manager->dacs_count == 2)
+				manage_dds_mode(GTK_COMBO_BOX(tx3), &manager->dac2.tx1);
+			else
+				manage_dds_mode(GTK_COMBO_BOX(tx3), &manager->dac1.tx3);
 		}
 		if (tx4 && gtk_combo_box_get_active(GTK_COMBO_BOX(tx4)) == DDS_BUFFER) {
 			gtk_combo_box_set_active(GTK_COMBO_BOX(tx4), active);
-			manage_dds_mode(GTK_COMBO_BOX(tx4), &manager->dac2.tx2);
+			if (manager->dacs_count == 2)
+				manage_dds_mode(GTK_COMBO_BOX(tx4), &manager->dac2.tx2);
+			else
+				manage_dds_mode(GTK_COMBO_BOX(tx4), &manager->dac1.tx4);
 		}
 	}
 
@@ -1808,6 +1833,14 @@ static void manager_iio_setup(struct dac_data_manager *manager)
 	if (manager->dac1.tx_count == 2)
 		g_signal_connect(manager->dac1.tx2.dds_mode_widget, "changed", G_CALLBACK(manage_dds_mode),
 			&manager->dac1.tx2);
+	if (manager->dac1.tx_count == 4) {
+		g_signal_connect(manager->dac1.tx2.dds_mode_widget, "changed", G_CALLBACK(manage_dds_mode),
+			&manager->dac1.tx2);
+		g_signal_connect(manager->dac1.tx3.dds_mode_widget, "changed", G_CALLBACK(manage_dds_mode),
+			&manager->dac1.tx3);
+		g_signal_connect(manager->dac1.tx4.dds_mode_widget, "changed", G_CALLBACK(manage_dds_mode),
+			&manager->dac1.tx4);
+	}
 	if (manager->dacs_count == 2) {
 		g_signal_connect(manager->dac2.tx1.dds_mode_widget, "changed", G_CALLBACK(manage_dds_mode),
 			&manager->dac2.tx1);
@@ -1914,6 +1947,11 @@ static int dds_dac_init(struct dac_data_manager *manager,
 	} else if (ddac->tones_count == 8) {
 		dds_tx_init(ddac, &ddac->tx1, 1);
 		dds_tx_init(ddac, &ddac->tx2, 2);
+	} else if (ddac->tones_count == 16) {
+		dds_tx_init(ddac, &ddac->tx1, 1);
+		dds_tx_init(ddac, &ddac->tx2, 2);
+		dds_tx_init(ddac, &ddac->tx3, 3);
+		dds_tx_init(ddac, &ddac->tx4, 4);
 	} else {
 		return -1;
 	}
@@ -2081,6 +2119,9 @@ void dac_data_manager_update_iio_widgets(struct dac_data_manager *manager)
 
 	manage_dds_mode(GTK_COMBO_BOX(manager->dac1.tx1.dds_mode_widget), &manager->dac1.tx1);
 	manage_dds_mode(GTK_COMBO_BOX(manager->dac1.tx2.dds_mode_widget), &manager->dac1.tx2);
+	manage_dds_mode(GTK_COMBO_BOX(manager->dac1.tx3.dds_mode_widget), &manager->dac1.tx3);
+	manage_dds_mode(GTK_COMBO_BOX(manager->dac1.tx4.dds_mode_widget), &manager->dac1.tx4);
+
 	manage_dds_mode(GTK_COMBO_BOX(manager->dac2.tx1.dds_mode_widget), &manager->dac2.tx1);
 	manage_dds_mode(GTK_COMBO_BOX(manager->dac2.tx2.dds_mode_widget), &manager->dac2.tx2);
 }
