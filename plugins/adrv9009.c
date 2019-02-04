@@ -480,7 +480,7 @@ static void on_ensm_mode_available_changed(void)
 
 static void rx_freq_info_update(void)
 {
-	double lo_freq;
+	double lo_freq = 0;
 
 	if (cap) {
 		rx_update_device_sampling_freq(CAP_DEVICE,
