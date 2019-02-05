@@ -1112,6 +1112,11 @@ static void save_profile(const struct osc_plugin *plugin, const char *ini_fn)
 	}
 }
 
+gpointer copy_gchar_array(gconstpointer src, gpointer data)
+{
+	return (gpointer)g_strdup(src);
+}
+
 static void context_destroy(struct osc_plugin *plugin, const char *ini_fn)
 {
 	save_profile(plugin, ini_fn);
@@ -1120,14 +1125,18 @@ static void context_destroy(struct osc_plugin *plugin, const char *ini_fn)
 
 struct osc_plugin * create_plugin(struct osc_plugin_context *plugin_ctx)
 {
-	struct osc_plugin *plugin= g_new(struct osc_plugin, 1);
+	struct osc_plugin *plugin= g_new0(struct osc_plugin, 1);
 
 	if (!plugin_ctx ) {
 		fprintf(stderr, "Cannot create plugin because an invalid plugin context was provided\n");
 		return NULL;
 	}
 
-	plugin->name = plugin_ctx->plugin_name;
+	plugin->priv = g_new0(struct plugin_private, 1);
+	plugin->priv->plugin_ctx.plugin_name = g_strdup(plugin_ctx->plugin_name);
+	plugin->priv->plugin_ctx.required_devices = g_list_copy_deep(plugin_ctx->required_devices, (GCopyFunc)copy_gchar_array, NULL);
+
+	plugin->name = plugin->priv->plugin_ctx.plugin_name;
 	plugin->dynamically_created = TRUE;
 	plugin->init = adrv9009adv_init;
 	plugin->handle_item = adrv9009adv_handle;
@@ -1136,10 +1145,6 @@ struct osc_plugin * create_plugin(struct osc_plugin_context *plugin_ctx)
 	plugin->save_profile = save_profile;
 	plugin->load_profile = load_profile;
 	plugin->destroy = context_destroy;
-
-	plugin->priv = g_new0(struct plugin_private, 1);
-	plugin->priv->plugin_ctx.plugin_name = g_strdup(plugin_ctx->plugin_name);
-	plugin->priv->plugin_ctx.required_devices = g_list_copy(plugin_ctx->required_devices);
 
 	return plugin;
 }
@@ -1179,17 +1184,26 @@ static GArray* get_phy_adrv9009_devices(void)
 /* Informs how many plugins can be instantiated and gives context for each possible plugin instance */
 GArray* get_data_for_possible_plugin_instances(void)
 {
-	GArray *data = g_array_new(FALSE, TRUE, sizeof(struct osc_plugin_context));
+	GArray *data = g_array_new(FALSE, TRUE, sizeof(struct osc_plugin_context *));
 	GArray *devices = get_phy_adrv9009_devices();
 	guint i = 0;
 
-	for (; i < data->len; i++) {
-		struct osc_plugin_context *context = &g_array_index(data, struct osc_plugin_context, i);
+	for (; i < devices->len; i++) {
+		struct osc_plugin_context *context = g_new(struct osc_plugin_context, 1);
 		struct iio_device *dev = g_array_index(devices, struct iio_device*, i);
+
+		/* Construct the name of the plugin */
+		char *name;
+		if (devices->len > 1)
+			name = g_strdup_printf("%s-%i", THIS_DRIVER, i);
+		else
+			name = g_strdup(THIS_DRIVER);
 
 		context->required_devices = NULL;
 		context->required_devices = g_list_append(context->required_devices, g_strdup(iio_device_get_name(dev)));
-		context->plugin_name = g_strdup(THIS_DRIVER); // TO DO: generate different names when multiple plugins available
+		context->plugin_name = g_strdup(name);
+		g_free(name);
+		g_array_append_val(data, context);
 	}
 
 	g_array_free(devices, FALSE);
