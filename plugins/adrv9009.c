@@ -469,11 +469,13 @@ static void set_ensm_mode_of_all_devices(const char *mode)
 
 static void on_ensm_mode_available_changed(void)
 {
+	gchar *mode = gtk_combo_box_get_active_text(GTK_COMBO_BOX(ensm_mode_available));
+	if (!mode)
+		return;
+
 	/* Sync all devices to the same ensm_mode */
-	if (!plugin_single_device_mode) {
-		gchar *mode = gtk_combo_box_get_active_text(GTK_COMBO_BOX(ensm_mode_available));
+	if (!plugin_single_device_mode)
 		set_ensm_mode_of_all_devices(mode);
-	}
 
 	glb_settings_update_labels();
 }
