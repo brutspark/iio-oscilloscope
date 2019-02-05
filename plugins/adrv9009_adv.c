@@ -1147,7 +1147,11 @@ static void context_destroy(struct osc_plugin *plugin, const char *ini_fn)
 	}
 	g_free(plugin->priv->sr_attribs);
 
+	osc_plugin_context_free_resources(&plugin->priv->plugin_ctx);
+	
 	osc_destroy_context(plugin->priv->ctx);
+	
+	g_free(plugin->priv);
 }
 
 struct osc_plugin * create_plugin(struct osc_plugin_context *plugin_ctx)
@@ -1174,12 +1178,6 @@ struct osc_plugin * create_plugin(struct osc_plugin_context *plugin_ctx)
 	plugin->destroy = context_destroy;
 
 	return plugin;
-}
-
-void destroy_plugin(struct osc_plugin *plugin)
-{
-	osc_plugin_context_free_resources(&plugin->priv->plugin_ctx);
-	g_free(plugin->priv);
 }
 
 // TO DO: Share this function with adrv9009 plugin instead of having a copy of it.
