@@ -1034,6 +1034,7 @@ static GtkWidget *gui_dac_create(struct dds_dac *ddac)
 	GtkWidget *dac_align;
 	GtkWidget *dac_table;
 	gchar *frm_title;
+	guint i;
 
 	if (!ddac->iio_dac)
 		return NULL;
@@ -1045,11 +1046,9 @@ static GtkWidget *gui_dac_create(struct dds_dac *ddac)
 
 	gtk_alignment_set_padding(GTK_ALIGNMENT(dac_align), 5, 5, 5, 5);
 
-	gtk_table_attach(GTK_TABLE(dac_table), gui_tx_create(&ddac->tx1),
-		0, 1, 1, 2, GTK_FILL, GTK_FILL, 0, 0);
-	if (ddac->tx_count == 2)
-		gtk_table_attach(GTK_TABLE(dac_table), gui_tx_create(&ddac->tx2),
-			1, 2, 1, 2, GTK_FILL, GTK_FILL, 0, 0);
+	for (i = 0; i < ddac->tx_count; i++)
+		gtk_table_attach(GTK_TABLE(dac_table), gui_tx_create(&ddac->txs[i]),
+			0 + i, 1 + i, 1, 2, GTK_FILL, GTK_FILL, 0, 0);
 
 	ddac->frame = dac_frm;
 	gtk_widget_show(dac_frm);
